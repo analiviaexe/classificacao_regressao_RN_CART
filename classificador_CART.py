@@ -60,7 +60,7 @@ print(linha_treino5); print(linha_valid5)
 print(f"\nMelhores parâmetros encontrados: {grid_search.best_estimator_}")
 modelo_final = grid_search.best_estimator_
 
-# --- predições  ---
+# --- acuraria  ---
 # com dados do treinamento
 y_pred_train = modelo_final.predict(X_train_val)
 acc_train = accuracy_score(y_train_val, y_pred_train) * 100
