@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 ARQUIVO_DESENVOLVIMENTO = './VictSim3/datasets/vict/100v/data.csv'
 ARQUIVO_PREDICAO_FINAL = './VictSim3/datasets/vict/1000v/data.csv'
 COLUNA_ALVO = 'tri'
-COLUNAS_FEATURES = ['idade', 'fc', 'fr', 'pas', 'spo2', 'temp', 'pr', 'sg', 'fx', 'queim', 'gcs', 'avpu']
+COLUNAS_FEATURES = ['idade', 'fc', 'fr', 'pas', 'spo2', 'temp', 'pr', 'sg', 'fx', 'queim']
 
 df_dev = pd.read_csv(ARQUIVO_DESENVOLVIMENTO)
 X_dev_full, y_dev_full = df_dev[COLUNAS_FEATURES].values, df_dev[COLUNA_ALVO].values

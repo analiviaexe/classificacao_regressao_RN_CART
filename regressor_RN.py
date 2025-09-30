@@ -3,13 +3,14 @@ import numpy as np
 from sklearn.model_selection import KFold, cross_validate
 from sklearn.neural_network import MLPRegressor
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import f1_score, confusion_matrix, classification_report
+from sklearn.metrics import f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
 ARQUIVO_DESENVOLVIMENTO = './VictSim3/datasets/vict/100v/data.csv'
 ARQUIVO_PREDICAO_FINAL = './VictSim3/datasets/vict/1000v/data.csv'
 COLUNA_ALVO = 'tri'
-COLUNAS_FEATURES = ['idade', 'fc', 'fr', 'pas', 'spo2', 'temp', 'pr', 'sg', 'fx', 'queim', 'gcs', 'avpu']
+COLUNAS_FEATURES = ['idade', 'fc', 'fr', 'pas', 'spo2', 'temp', 'pr', 'sg', 'fx', 'queim']
 
 df_dev = pd.read_csv(ARQUIVO_DESENVOLVIMENTO)
 X_dev_full, y_dev_full = df_dev[COLUNAS_FEATURES].values, df_dev[COLUNA_ALVO].values
@@ -91,13 +92,95 @@ for i in range(parametros['num_params']):
   #print(f"Parametrization {i+1}: {model}")
   print(f"Best Index: {resultados['best_index'][i]}\n")
 
-# Resultados
-print("Train & Valid Scores (Neg MSE) per parametrization:")
+# 5.2) Comparar as médias dos MSE negativos
+nomes_p = [f"P{i+1}" for i in range(parametros['num_params'])]
+print("\n5.2) Comparar as médias dos MSE negativos")
+header_media = "| {:<14} |".format("Média MSE Neg")
+for nome in nomes_p: header_media += " {:<7} |".format(nome)
+print(header_media); print("-" * len(header_media))
+linha_treino_media = "| {:<14} |".format("Treino")
+linha_valid_media = "| {:<14} |".format("Validação")
+for i in range(parametros['num_params']): 
+    linha_treino_media += " {:.5f} |".format(resultados['train_scores'][i].mean())
+for i in range(parametros['num_params']): 
+    linha_valid_media += " {:.5f} |".format(resultados['vld_scores'][i].mean())
+print(linha_treino_media); print(linha_valid_media)
+
+# Comparar as variâncias dos MSE negativos
+print("\n5.2) Comparar as variâncias dos MSE negativos")
+header_var = "| {:<14} |".format("Variância MSE Neg")
+for nome in nomes_p: header_var += " {:<7} |".format(nome)
+print(header_var); print("-" * len(header_var))
+linha_treino_var = "| {:<14} |".format("Treino")
+linha_valid_var = "| {:<14} |".format("Validação")
+for i in range(parametros['num_params']): 
+    linha_treino_var += " {:.5f} |".format(resultados['train_scores'][i].var(ddof=1))
+for i in range(parametros['num_params']): 
+    linha_valid_var += " {:.5f} |".format(resultados['vld_scores'][i].var(ddof=1))
+print(linha_treino_var); print(linha_valid_var)
+
+# 5.2) Análise de viés e variância para escolha da melhor parametrização
+print("\n5.2) Análise de viés/variância e escolha da melhor parametrização:")
+bias_scores = []
 for i in range(parametros['num_params']):
-    print(f"Par{i+1}\tMean\t\tVar.\t\tScores per fold")
-    # ddof=1 variancia amostral
-    print(f"Trn:\t{resultados['train_scores'][i].mean():>8.6f}\t{resultados['train_scores'][i].var(ddof=1):>8.6f}\t{resultados['train_scores'][i]}")
-    print(f"Vld:\t{resultados['vld_scores'][i].mean():>8.6f}\t{resultados['vld_scores'][i].var(ddof=1):>8.6f}\t{resultados['vld_scores'][i]}")
-    print(f"Dif:\t{np.abs(resultados['train_scores'][i].mean() - resultados['vld_scores'][i].mean()):>8.6f}\t\t\t{abs(resultados['train_scores'][i] - resultados['vld_scores'][i])}")
-    print(f"Best index: {resultados['best_index'][i]}")
-    print()
+    bias = abs(resultados['train_scores'][i].mean() - resultados['vld_scores'][i].mean())
+    variance = resultados['vld_scores'][i].var(ddof=1)
+    bias_scores.append((bias, variance, resultados['vld_scores'][i].mean()))
+    print(f"P{i+1}: Viés={bias:.6f}, Variância={variance:.6f}, MSE_val={resultados['vld_scores'][i].mean():.6f}")
+
+# Escolher parametrização com melhor trade-off (menor viés + menor variância + melhor MSE validação)
+melhor_param_idx = max(range(len(bias_scores)), key=lambda i: bias_scores[i][2])  # Maior MSE negativo (menor erro)
+print(f"\nMelhor parametrização escolhida: P{melhor_param_idx+1}")
+
+# 5.3) Escolher o melhor modelo da parametrização escolhida
+melhor_modelo = resultados['best_model'][melhor_param_idx]
+print(f"5.3) Modelo escolhido: fold {resultados['best_index'][melhor_param_idx]} da parametrização P{melhor_param_idx+1}")
+
+# 5.4) Retreinar com todo o dataset de desenvolvimento
+print("\n5.4) Retreinando modelo com todo o dataset de desenvolvimento...")
+neurons_per_layer = tuple([parametros['n_neurons'][melhor_param_idx]] * parametros['n_layers'][melhor_param_idx])
+modelo_final = MLPRegressor(
+    hidden_layer_sizes=neurons_per_layer,
+    activation=parametros['activation'],
+    solver=parametros['solver'],
+    learning_rate='adaptive',
+    learning_rate_init=parametros['learning_rates'][melhor_param_idx],
+    max_iter=parametros['max_iter'],
+    shuffle=True,
+    momentum=parametros['momentum'],
+    random_state=42
+)
+modelo_final.fit(X_dev_full, y_dev_full)
+
+# 5.5) Teste final com dataset de 1000v
+print("\n5.5) Realizando teste final com dataset de 1000v...")
+df_teste_final = pd.read_csv(ARQUIVO_PREDICAO_FINAL)
+X_teste_final = df_teste_final[COLUNAS_FEATURES].values
+y_teste_verdadeiro = df_teste_final[COLUNA_ALVO].values
+y_pred_final = modelo_final.predict(X_teste_final)
+
+# Calcular MSE final
+from sklearn.metrics import mean_squared_error
+mse_final = mean_squared_error(y_teste_verdadeiro, y_pred_final)
+print(f"MSE final no dataset de teste (1000v): {mse_final:.6f}")
+print(f"MSE negativo final: {-mse_final:.6f}")
+
+print(f"\nResumo dos resultados:")
+print(f"- Melhor parametrização: P{melhor_param_idx+1}")
+print(f"- Configuração: {parametros['n_layers'][melhor_param_idx]} camadas, {parametros['n_neurons'][melhor_param_idx]} neurônios, lr={parametros['learning_rates'][melhor_param_idx]}")
+print(f"- MSE final: {mse_final:.6f}")
+
+plt.figure(figsize=(8, 6))
+plt.plot(X_plot, true_fun(X_plot), label='Função verdadeira', color='black', alpha=0.7)
+
+for i in range(num_params):
+  color = cm.viridis(i / (num_params - 1))
+  plt.plot(X_plot, best_model[i].predict(X_plot.reshape(-1, 1)),
+           label=r'$\hat{f}_{' + str(i+1) + '}(X)$', alpha=0.7)
+
+plt.xlabel('X')
+plt.ylabel('y')
+plt.title('X vs y')
+plt.legend()
+plt.grid(True)
+plt.show()
