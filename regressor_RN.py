@@ -1,15 +1,13 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import KFold, cross_validate
+from sklearn.model_selection import cross_validate
 from sklearn.neural_network import MLPRegressor
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import f1_score, confusion_matrix, classification_report, ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 ARQUIVO_DESENVOLVIMENTO = './VictSim3/datasets/vict/100v/data.csv'
 ARQUIVO_PREDICAO_FINAL = './VictSim3/datasets/vict/1000v/data.csv'
-COLUNA_ALVO = 'tri'
+COLUNA_ALVO = 'sobr'
 COLUNAS_FEATURES = ['idade', 'fc', 'fr', 'pas', 'spo2', 'temp', 'pr', 'sg', 'fx', 'queim']
 
 df_dev = pd.read_csv(ARQUIVO_DESENVOLVIMENTO)
@@ -20,14 +18,14 @@ X_train_val, X_test_local, y_train_val, y_test_local = train_test_split(
 
 parametros = {
     'num_params': 3,            # num de parametrizacoes a treinar
-    'n_layers': [2, 6, 20],
-    'n_neurons': [4, 10, 20],
-    'learning_rates': [0.01, 0.025, 0.03],
+    'n_layers': [2, 20, 4],
+    'n_neurons': [64, 20, 128],
+    'learning_rates': [0.02, 0.02, 0.001],
     'solver': 'sgd',
     'max_iter': 10000,
     'activation': 'tanh',
     'momentum': 0.95,
-    'k_folds': 5
+    'k_folds': 4
 }
 
 results = []
@@ -92,51 +90,64 @@ for i in range(parametros['num_params']):
   #print(f"Parametrization {i+1}: {model}")
   print(f"Best Index: {resultados['best_index'][i]}\n")
 
-# 5.2) Comparar as médias dos MSE negativos
-nomes_p = [f"P{i+1}" for i in range(parametros['num_params'])]
-print("\n5.2) Comparar as médias dos MSE negativos")
-header_media = "| {:<14} |".format("Média MSE Neg")
-for nome in nomes_p: header_media += " {:<7} |".format(nome)
-print(header_media); print("-" * len(header_media))
-linha_treino_media = "| {:<14} |".format("Treino")
-linha_valid_media = "| {:<14} |".format("Validação")
-for i in range(parametros['num_params']): 
-    linha_treino_media += " {:.5f} |".format(resultados['train_scores'][i].mean())
-for i in range(parametros['num_params']): 
-    linha_valid_media += " {:.5f} |".format(resultados['vld_scores'][i].mean())
-print(linha_treino_media); print(linha_valid_media)
-
-# Comparar as variâncias dos MSE negativos
-print("\n5.2) Comparar as variâncias dos MSE negativos")
-header_var = "| {:<14} |".format("Variância MSE Neg")
-for nome in nomes_p: header_var += " {:<7} |".format(nome)
-print(header_var); print("-" * len(header_var))
-linha_treino_var = "| {:<14} |".format("Treino")
-linha_valid_var = "| {:<14} |".format("Validação")
-for i in range(parametros['num_params']): 
-    linha_treino_var += " {:.5f} |".format(resultados['train_scores'][i].var(ddof=1))
-for i in range(parametros['num_params']): 
-    linha_valid_var += " {:.5f} |".format(resultados['vld_scores'][i].var(ddof=1))
-print(linha_treino_var); print(linha_valid_var)
-
-# 5.2) Análise de viés e variância para escolha da melhor parametrização
-print("\n5.2) Análise de viés/variância e escolha da melhor parametrização:")
-bias_scores = []
+# Resultados
+print("Train & Valid Scores (Neg MSE) per parametrization:")
 for i in range(parametros['num_params']):
-    bias = abs(resultados['train_scores'][i].mean() - resultados['vld_scores'][i].mean())
-    variance = resultados['vld_scores'][i].var(ddof=1)
-    bias_scores.append((bias, variance, resultados['vld_scores'][i].mean()))
-    print(f"P{i+1}: Viés={bias:.6f}, Variância={variance:.6f}, MSE_val={resultados['vld_scores'][i].mean():.6f}")
+    print(f"Par{i+1}\tMean\t\tVar.\t\tScores per fold")
+    # ddof=1 variancia amostral
+    print(f"Trn:\t{resultados['train_scores'][i].mean():>8.6f}\t{resultados['train_scores'][i].var(ddof=1):>8.6f}\t{resultados['train_scores'][i]}")
+    print(f"Vld:\t{resultados['vld_scores'][i].mean():>8.6f}\t{resultados['vld_scores'][i].var(ddof=1):>8.6f}\t{resultados['vld_scores'][i]}")
+    print(f"Dif:\t{np.abs(resultados['train_scores'][i].mean() - resultados['vld_scores'][i].mean()):>8.6f}\t\t\t{abs(resultados['train_scores'][i] - resultados['vld_scores'][i])}")
+    print(f"Best index: {resultados['best_index'][i]}")
+    print()
 
-# Escolher parametrização com melhor trade-off (menor viés + menor variância + melhor MSE validação)
-melhor_param_idx = max(range(len(bias_scores)), key=lambda i: bias_scores[i][2])  # Maior MSE negativo (menor erro)
-print(f"\nMelhor parametrização escolhida: P{melhor_param_idx+1}")
+plt.figure(figsize=(10, 6))
+colors = [
+    ["darkblue", "lightblue"],  # Tons de azul para i=0
+    ["darkorange", "orange"],  # Tons de laranja para i=1
+    ["darkgreen", "lightgreen"],  # Tons de verde para i=2 (se houver mais índices)
+]
 
-# 5.3) Escolher o melhor modelo da parametrização escolhida
-melhor_modelo = resultados['best_model'][melhor_param_idx]
-print(f"5.3) Modelo escolhido: fold {resultados['best_index'][melhor_param_idx]} da parametrização P{melhor_param_idx+1}")
+for i in range(parametros['num_params']):
+    plt.plot(range(1, len(resultados['train_scores'][i]) + 1), resultados['train_scores'][i], label=f"{i+1} Train Neg MSE", marker='o', color=colors[i][0])
+    plt.plot(range(1, len(resultados['vld_scores'][i]) + 1), resultados['vld_scores'][i], label=f"{i+1} Valid Neg MSE", marker='o', color=colors[i][1])
 
-# 5.4) Retreinar com todo o dataset de desenvolvimento
+plt.xlabel("Fold")
+plt.ylabel("Neg MSE")
+plt.title("Training and Validation Scores (Bias and Variance)")
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.xticks(np.arange(1, parametros['k_folds'] + 1, 1))
+plt.grid()
+plt.tight_layout()
+plt.show()
+
+print("\n5.3) Escolhendo a melhor parametrização (Método: Penalidade por Overfitting)...")
+
+# Fator de penalização: quão importante é a diferença?
+# Se 1.0, uma diferença de 0.1 tem o mesmo peso que uma queda de 0.1 na média.
+PESO_PENALIDADE_OVERFITTING = 1.5
+
+scores_ajustados = []
+for i in range(parametros['num_params']):
+    # Pega as médias dos scores
+    media_validacao = resultados['vld_scores'][i].mean()
+    media_treino = resultados['train_scores'][i].mean()
+
+    # Calcula a diferença (gap) que pode indicar overfitting
+    diferenca_overfitting = abs(media_treino - media_validacao)
+
+    # O score ajustado penaliza o overfitting
+    score_ajustado = media_validacao - (PESO_PENALIDADE_OVERFITTING * diferenca_overfitting)
+    scores_ajustados.append(score_ajustado)
+
+    print(f"Par{i+1}: Média Vld={media_validacao:.6f}, Diferença={diferenca_overfitting:.6f} -> Score Ajustado={score_ajustado:.6f}")
+
+# Escolhe o índice da parametrização com o MAIOR score ajustado
+melhor_param_idx = np.argmax(scores_ajustados)
+
+print(f"\nMelhor parametrização escolhida: P{melhor_param_idx+1} (melhor balanço entre performance e generalização)")
+
+# Retreinar
 print("\n5.4) Retreinando modelo com todo o dataset de desenvolvimento...")
 neurons_per_layer = tuple([parametros['n_neurons'][melhor_param_idx]] * parametros['n_layers'][melhor_param_idx])
 modelo_final = MLPRegressor(
@@ -152,7 +163,7 @@ modelo_final = MLPRegressor(
 )
 modelo_final.fit(X_dev_full, y_dev_full)
 
-# 5.5) Teste final com dataset de 1000v
+# Teste final com dataset de 1000v
 print("\n5.5) Realizando teste final com dataset de 1000v...")
 df_teste_final = pd.read_csv(ARQUIVO_PREDICAO_FINAL)
 X_teste_final = df_teste_final[COLUNAS_FEATURES].values
@@ -169,18 +180,3 @@ print(f"\nResumo dos resultados:")
 print(f"- Melhor parametrização: P{melhor_param_idx+1}")
 print(f"- Configuração: {parametros['n_layers'][melhor_param_idx]} camadas, {parametros['n_neurons'][melhor_param_idx]} neurônios, lr={parametros['learning_rates'][melhor_param_idx]}")
 print(f"- MSE final: {mse_final:.6f}")
-
-plt.figure(figsize=(8, 6))
-plt.plot(X_plot, true_fun(X_plot), label='Função verdadeira', color='black', alpha=0.7)
-
-for i in range(num_params):
-  color = cm.viridis(i / (num_params - 1))
-  plt.plot(X_plot, best_model[i].predict(X_plot.reshape(-1, 1)),
-           label=r'$\hat{f}_{' + str(i+1) + '}(X)$', alpha=0.7)
-
-plt.xlabel('X')
-plt.ylabel('y')
-plt.title('X vs y')
-plt.legend()
-plt.grid(True)
-plt.show()

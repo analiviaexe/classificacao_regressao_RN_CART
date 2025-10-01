@@ -19,7 +19,7 @@ X_train_val, X_test_local, y_train_val, y_test_local = train_test_split(
 modelo_base = DecisionTreeClassifier(random_state=42)
 parametros_lista = [
     { 'criterion': ['entropy'], 'max_depth': [4], 'min_samples_leaf': [8]},
-    { 'criterion': ['entropy'], 'max_depth': [8], 'min_samples_leaf': [12]},
+    { 'criterion': ['entropy'], 'max_depth': [2], 'min_samples_leaf': [12]},
     { 'criterion': ['entropy'], 'max_depth': [8], 'min_samples_leaf': [4]}
 ]
 
@@ -60,7 +60,7 @@ print(linha_treino5); print(linha_valid5)
 print(f"\nMelhores parâmetros encontrados: {grid_search.best_estimator_}")
 modelo_final = grid_search.best_estimator_
 
-# --- acuraria  ---
+# --- predições  ---
 # com dados do treinamento
 y_pred_train = modelo_final.predict(X_train_val)
 acc_train = accuracy_score(y_train_val, y_pred_train) * 100
